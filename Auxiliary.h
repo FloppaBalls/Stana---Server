@@ -2,50 +2,50 @@
 #ifndef AUXILIARY_H
 #define AUXILIARY_H
 #include <QTcpSocket>
-#include <QString>
+#include <QByteArray>
 #include <QDateTime>
 #include <QTimeZone>
 
-static const QString commandEnd = "~\\";
-static const QString commandBegin = "~";
+static const QByteArray commandEnd = "~\\";
+static const QByteArray commandBegin = "~";
 
 
 //for contact info
-static const QString contactSeps[] = { "\"OwnFriendList\":" , "\"RequestList\":" , "\"BlockedList\":" , "\"NecessaryList:\":" };
+static const QByteArray contactSeps[] = { "\"OwnFriendList\":" , "\"RequestList\":" , "\"BlockedList\":" , "\"NecessaryList:\":" };
 
-static const QString contactPrefix = "con";
+static const QByteArray contactPrefix = "con";
 
-static const QString contact_idSep = "\"" + contactPrefix + "Id\":";
-static const QString contact_nameSep = "\"" + contactPrefix + "Name\":";
-static const QString contact_friendListSep = "\"" + contactPrefix + "FriendList\":";
-static const QString contact_onlineSep = "\"" + contactPrefix + "Online\":";
-static const QString contact_lastSeenSep = "\"" + contactPrefix + "LastSeen\":";
-static const QString contact_isBlockedSep = "\"" + contactPrefix + "IsBlocked\":";
-static const QString contact_hasRequestSep = "\"" + contactPrefix + "HasRequest\":";
+static const QByteArray contact_idSep = "\"" + contactPrefix + "Id\":";
+static const QByteArray contact_nameSep = "\"" + contactPrefix + "Name\":";
+static const QByteArray contact_friendListSep = "\"" + contactPrefix + "FriendList\":";
+static const QByteArray contact_onlineSep = "\"" + contactPrefix + "Online\":";
+static const QByteArray contact_lastSeenSep = "\"" + contactPrefix + "LastSeen\":";
+static const QByteArray contact_isBlockedSep = "\"" + contactPrefix + "IsBlocked\":";
+static const QByteArray contact_hasRequestSep = "\"" + contactPrefix + "HasRequest\":";
 //for message info
-static const QString messagePrefix = "mes";
+static const QByteArray messagePrefix = "mes";
 
-static const QString message_chatIdSep = "\"" + messagePrefix + "ChatId\":";
-static const QString message_nameSep = "\"" + messagePrefix + "Name\":";
-static const QString message_textSep = "\"" + messagePrefix + "Text\":";
-static const QString message_timestampSep = "\"" + messagePrefix + "Timestamp\":";
+static const QByteArray message_chatIdSep = "\"" + messagePrefix + "ChatId\":";
+static const QByteArray message_nameSep = "\"" + messagePrefix + "Name\":";
+static const QByteArray message_textSep = "\"" + messagePrefix + "Text\":";
+static const QByteArray message_timestampSep = "\"" + messagePrefix + "Timestamp\":";
 //for chat info
-static const QString chatPrefix = "chat";
+static const QByteArray chatPrefix = "chat";
 
-static const QString chat_idSep = "\"" + chatPrefix + "Id\":";
-static const QString chat_nameSep = "\"" + chatPrefix + "Name\":";
-static const QString chat_historySep = "\"" + chatPrefix + "History\":";
-static const QString chat_memberListSep = "\"" + chatPrefix + "MemberList\":";
-static const QString chat_privateSep = "\"" + chatPrefix + "Private\":";
-static const QString chat_isSenderSep = "\"" + chatPrefix + "isSender\":";
-static const QString chat_adminIdSep = "\"" + chatPrefix + "Admin\":";
-static const QString chat_readOnlyListSep = "\"" + chatPrefix + "ReadOnlyList\":";
-static const QString chat_removedSep = "\"" + chatPrefix + "Removed\":";
-static const QString chat_newMembersSep = "\"" + chatPrefix + "NewMembers\":";
+static const QByteArray chat_idSep = "\"" + chatPrefix + "Id\":";
+static const QByteArray chat_nameSep = "\"" + chatPrefix + "Name\":";
+static const QByteArray chat_historySep = "\"" + chatPrefix + "History\":";
+static const QByteArray chat_memberListSep = "\"" + chatPrefix + "MemberList\":";
+static const QByteArray chat_privateSep = "\"" + chatPrefix + "Private\":";
+static const QByteArray chat_isSenderSep = "\"" + chatPrefix + "isSender\":";
+static const QByteArray chat_adminIdSep = "\"" + chatPrefix + "Admin\":";
+static const QByteArray chat_readOnlyListSep = "\"" + chatPrefix + "ReadOnlyList\":";
+static const QByteArray chat_removedSep = "\"" + chatPrefix + "Removed\":";
+static const QByteArray chat_newMembersSep = "\"" + chatPrefix + "NewMembers\":";
 //for user info
-static const QString userPrefix = "user";
+static const QByteArray userPrefix = "user";
 
-static const QString user_idSep = "\"" + userPrefix + "Id\":";
+static const QByteArray user_idSep = "\"" + userPrefix + "Id\":";
 
 enum RequestFromClient {
     Register,
@@ -62,7 +62,8 @@ enum RequestFromClient {
     CreateGroupChat,
     UpdateChatName,
     RemoveFromGroup,
-    AddPeopleToTheChat
+    AddPeopleToTheChat,
+    AddMedia
 };
 enum RequestFailure {
     NameUsed,
@@ -96,14 +97,14 @@ enum InfoToClient {
 class Auxiliary {
 public:
     static QString getClientKey(const QTcpSocket* client);
-    static QString quoteIt(const QString& str);
+    static QByteArray quoteIt(const QByteArray& str);
     //used for info that could contain the " character , it also replaces any " character with /"
-    static QString safeQuoteIt(QString str);
+    static QByteArray safeQuoteIt(QByteArray str);
     //it should look something like this: (str1 , str2 , str3 , .... , strn)
-    static QString makeList(std::vector<QString> str , char sepBegin = '(', char sepEnd = ')');
-    static void createCmd(QString& info, RequestFailure type);
-    static void createCmd(QString& info, InfoToClient type);
-    static std::vector<int> extractIntArray(const QString& str);
-    static QDateTime stringToDateTime(const QString& str);
+    static QByteArray makeList(std::vector<QByteArray> str , char sepBegin = '(', char sepEnd = ')');
+    static void createCmd(QByteArray& info, RequestFailure type);
+    static void createCmd(QByteArray& info, InfoToClient type);
+    static std::vector<int> extractIntArray(const QByteArray& str);
+    static QDateTime stringToDateTime(const QByteArray& str);
 };
 #endif // AUXILIARY_H

@@ -121,7 +121,7 @@ void ClientList::sendMessageToUsers(std::vector<int> userIdList , const QByteArr
     for (const int& userId : userIdList)
         sendMessageToUser(userId, message);
 }
-void ClientList::sendMessageToUsers(std::vector<QString> userIdList, const QByteArray& message) noexcept
+void ClientList::sendMessageToUsers(std::vector<QByteArray> userIdList, const QByteArray& message) noexcept
 {
     for (const QString& userId : userIdList)
         sendMessageToUser(userId.toInt(), message);

@@ -3,39 +3,40 @@
 
 QString Auxiliary::getClientKey(const QTcpSocket* client)
 {
-    return client->peerAddress().toString().append(':').append(QString::number(client->peerPort()));
+    return client->peerAddress().toString().append(':').append(QByteArray::number(client->peerPort()));
 }
-QString Auxiliary::quoteIt(const QString& str)
+QByteArray Auxiliary::quoteIt(const QByteArray& str)
 {
     return '"' + str + '"';
 }
-QString Auxiliary::safeQuoteIt(QString str)
+QByteArray Auxiliary::safeQuoteIt(QByteArray str)
 {
     return " \"" + str.replace('"', "\"") + " \"";
 }
 
-void Auxiliary::createCmd(QString& info , InfoToClient type)
+void Auxiliary::createCmd(QByteArray& info , InfoToClient type)
 {
-    info = commandBegin + "I" + QString::number(int(type)) + ':' +  info + commandEnd;
+    info = commandBegin + "I" + QByteArray::number(int(type)) + ':' +  info + commandEnd;
 }
-void Auxiliary::createCmd(QString& info, RequestFailure type)
+void Auxiliary::createCmd(QByteArray& info, RequestFailure type)
 {
-    info = commandBegin + "F" + QString::number(int(type)) + ':' + info + commandEnd;
+    info = commandBegin + "F" + QByteArray::number(int(type)) + ':' + info + commandEnd;
 }
 
-QString Auxiliary::makeList(std::vector<QString> list, char sepBegin , char sepEnd)
+QByteArray Auxiliary::makeList(std::vector<QByteArray> list, char sepBegin , char sepEnd)
 {
-    QString str = QChar(sepBegin);
+    QByteArray str;
+    str.append(sepBegin);
     for (int i = 0; i < list.size(); i++)
         str += list[i] + ',';
     str.back() = sepEnd;
     return str;
 }
 
-std::vector<int> Auxiliary::extractIntArray(const QString& str)
+std::vector<int> Auxiliary::extractIntArray(const QByteArray& str)
 {
     std::vector<int> memberList;
-    QString nrStr;
+    QByteArray nrStr;
     qint16 i = str.indexOf('{') + 1;
 
     while (str[i] != '}')
@@ -53,13 +54,13 @@ std::vector<int> Auxiliary::extractIntArray(const QString& str)
     return memberList;
 }
 
-QDateTime Auxiliary::stringToDateTime(const QString& str)
+QDateTime Auxiliary::stringToDateTime(const QByteArray& str)
 {
     int timeStampPos = 0;
     std::vector<int> date(3);
     std::vector<int> time(3);
     int i = 0;
-    QString aux;
+    QByteArray aux;
     //ok so for some reason , when I read from the database and send it to client , the separator between date and time is sometimes 'T' and sometimes ' '
     while (str[i] != ' ')
     {

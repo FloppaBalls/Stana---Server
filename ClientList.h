@@ -23,7 +23,7 @@ public:
 
     void sendMessageToUsers(std::vector<int> userIdList , const QString& message) noexcept;
     void sendMessageToUsers(std::vector<int> userIdList , const QByteArray& message) noexcept;
-    void sendMessageToUsers(std::vector<QString> userIdList, const QByteArray& message) noexcept;
+    void sendMessageToUsers(std::vector<QByteArray> userIdList, const QByteArray& message) noexcept;
     void sendMessageToUser(int userId , const QString& message) noexcept;
     void sendMessageToUser(int userId , const QByteArray& message) noexcept;
 
