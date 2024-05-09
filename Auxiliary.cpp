@@ -1,6 +1,16 @@
 #include "Auxiliary.h"
 
 
+int Converters::suffixType(const QString& suf)
+{
+    if (suf == "jpg")
+        return (int)FileExtension::JPG;
+    if (suf == "png")
+        return (int)FileExtension::PNG;
+
+    return (int)FileExtension::INVALID;
+
+}
 QString Auxiliary::getClientKey(const QTcpSocket* client)
 {
     return client->peerAddress().toString().append(':').append(QByteArray::number(client->peerPort()));
@@ -91,4 +101,14 @@ QDateTime Auxiliary::stringToDateTime(const QByteArray& str)
         i++;
     }
     return QDateTime(QDate(date[0], date[1], date[2]), QTime(time[0], time[1], time[2]), QTimeZone(QTimeZone::LocalTime));
+}
+
+int Auxiliary::suffixType(const QString& suf)
+{
+    if (suf == "jpg")
+        return (int)FileExtension::JPG;
+    if (suf == "png")
+        return (int)FileExtension::PNG;
+
+    return (int)FileExtension::INVALID;
 }

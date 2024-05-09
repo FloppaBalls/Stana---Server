@@ -15,7 +15,7 @@ void ClientList::addClient(const Client& client)
     if(client.userId == -1)
     {
         _clientHash.insert(Auxiliary::getClientKey(client.socket) , std::make_shared<Client>( client));
-        qDebug() << "New client connected - Status: not logged in";
+        qDebug() << "->New client connected - Status: not logged in";
     }
     else
     {
@@ -23,7 +23,7 @@ void ClientList::addClient(const Client& client)
         //should I cast to void?
         insertClientInList(c);
 
-        qDebug() << "New client connected - Status: already logged in";
+        qDebug() << "->New client connected - Status: already logged in";
     }
 
 }
@@ -33,7 +33,7 @@ void ClientList::addClient(const Client& client , qint16 id)
     c->userId = std::move(id);
     _clientHash.insert(Auxiliary::getClientKey(client.socket) , insertClientInList(c));
     loggedInClients++;
-    qDebug() << "New client connected - Status: already logged in";
+    qDebug() << "->New client connected - Status: already logged in";
 
 }
 
@@ -47,15 +47,15 @@ void ClientList::removeClient(const QString& key)
         int pos = posById(client.userId);
         if(pos == -1)
         {
-            qDebug() << "Could not delete the element because the Id was not found";
-            qDebug() << "Ids in array: ";
+            qDebug() << " ! Could not delete the element because the Id was not found";
+            qDebug() << " ! Ids in array: ";
             for(const auto& c : _loggedClients)
                 qDebug() << c->userId;
 
             return;
         }
         _loggedClients.erase(beg + pos);
-        qDebug() << "Client removed from connected list";
+        qDebug() << "<-Client removed from connected list";
     }
     else
         client.socket->deleteLater();
@@ -69,12 +69,12 @@ void ClientList::setIdForClient(const QString& clientKey , qint16 id)
     {
         client->userId = id;
         insertClientInList(client);
-        qDebug() << "New client logged in with id: " << id;
+        qDebug() << "->New client logged in with id: " << id;
     }
     else
     {
         client->userId = id;
-        qDebug() << "Client switched account with id: " << id;
+        qDebug() << "~~Client switched account with id: " << id;
     }
 }
 

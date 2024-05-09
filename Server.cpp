@@ -12,7 +12,7 @@ QByteArray& Message::operator[](int i) { return param[i];}
 
 
 Server::Server(QObject* obj , int port)
-    :QObject(obj) , _list(this)
+    :QObject(obj) , _list(this) 
 {
     pServer = new QTcpServer(this);
 
@@ -50,16 +50,6 @@ Server::Server(QObject* obj , int port)
     }
     else
         qDebug() << "Failed to open the database";
-
-    //QSqlQuery query(*_database);
-    //query.exec("SELECT history FROM rooms;");
-    //while(query.next())
-    //{
-    //    //extractFromChat(query.value(0).toByteArray());
-    //    extractFromChat(query.value(0).toByteArray());
-    //}
-
-    //qDebug() << getChatsForUser(1);
 
 }
 
@@ -111,7 +101,7 @@ void Server::onNewConnection()
     QTcpSocket* pSocket = pServer->nextPendingConnection();
     if(pSocket == nullptr) return;
 
-    qDebug() << "New client connected";
+    qDebug() << "->New client connected";
     _list.addClient(Client(pSocket , -1 , Aux::getClientKey(pSocket)));
 
     connect(pSocket , &QTcpSocket::readyRead , this , &Server::onReadyRead);
@@ -137,11 +127,12 @@ void Server::onReadyRead()
     if(client == nullptr) return;
 
     const auto message = client->readAll();
-    qDebug() << "Request: " + message;
-
 
     RequestFromClient cmdType = extractRequestType(message);
     QSqlQuery query(*_database);
+
+    if(cmdType != RequestFromClient::MediaChunk)
+        qDebug() << "~~Request: " + message;
 
     std::vector<QByteArray> paramList;
     std::vector<QByteArray> mediaParamList;
@@ -155,19 +146,19 @@ void Server::onReadyRead()
         //verify if there is somebody already with this username or email
 
         if(query.exec("SELECT * FROM appusers WHERE name = '" + paramList[0] + "';") == false)
-            qDebug() << "Find existing name query failed: " + query.lastError().text();
+            qDebug() << " ! Find existing name query failed: " + query.lastError().text();
 
         if(query.next())
         {
-            aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::NameUsed));
+            aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::NameUsed)) + ':' + commandEnd;
             client->write(aux);
             break;
         }
         if(query.exec("SELECT * FROM appusers WHERE email = '" + paramList[1] + "';") == false)
-            qDebug() << "Find existing email query failed: " + query.lastError().text();
+            qDebug() << " ! Find existing email query failed: " + query.lastError().text();
         if(query.next())
         {
-            aux = commandBegin +"F" + QByteArray::number(int(RequestFailure::EmailUsed));
+            aux = commandBegin +"F" +  QByteArray::number(int(RequestFailure::EmailUsed)) + ':' + commandEnd;
             client->write(aux);
             break;
         }
@@ -175,7 +166,9 @@ void Server::onReadyRead()
         aux = "INSERT INTO appusers (name , email , password , isonline) VALUES ('" + paramList.at(0) + "' , '" + paramList.at(1) + "' , '" + paramList.at(2) + "','true') RETURNING id;";
         qDebug() << aux;
         query.exec(aux);
-        _list.setIdForClient(Aux::getClientKey(client), aux.toInt());
+        query.next();
+
+        _list.setIdForClient(Aux::getClientKey(client), query.value(0).toInt());
 
         //aux = "I" + QByteArray::number(int(InfoToClient::SignedIn));
         //client->write(aux);
@@ -188,7 +181,7 @@ void Server::onReadyRead()
         // check if it is a valid username
 
         if(query.exec("SELECT * FROM appusers WHERE name = '" + paramList[0] + "';") == false)
-            qDebug() << "Find existing name query failed: " + query.lastError().text();
+            qDebug() << " ! Find existing name query failed: " + query.lastError().text();
 
         if(query.next())
         {
@@ -199,22 +192,21 @@ void Server::onReadyRead()
             if(aux == paramList[1])
             {
                 aux = formAllDataOfUser(query.value(0).toInt());
+                setStatusForUser(query.value(0).toInt(), true);
                 _list.setIdForClient(Aux::getClientKey(client) , query.value(0).toInt());
             }
             else
-                aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::IncorrectPassword)) + ';';
+                aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::IncorrectPassword)) + ':' + commandEnd;
         }
         else
-            aux = "~F" + QByteArray::number(int(RequestFailure::NameNotFound)) + ';';
+            aux =  commandBegin + "F" + QByteArray::number(int(RequestFailure::NameNotFound)) + ':' +  commandEnd;
 
 
-        setStatusForUser(query.value(0).toInt(), true);
         client->write(aux);
         client->flush();
         break;
     case RequestFromClient::AddMessage:
         paramList = extractComplexParameters(message, cmdType);
-        qDebug() << "Sending message...";
 
         //ex UPDATE rooms SET history = array_append(history , ROW('Daquaivius' , 'nah like fr fr fr' , '2033-04-05 00:00:00')::message) WHERE id = 10;
         aux = "UPDATE rooms SET history = array_append(history , ROW('" + paramList.at(1) + "' , '" + paramList.at(2) + "' , '" + paramList.at(3) + "')::message) WHERE id = " + paramList[0] + ';';
@@ -222,10 +214,11 @@ void Server::onReadyRead()
 
 
         if(query.exec() == false)
-            qDebug() << query.lastError();
+            qDebug() << " ! " << query.lastError();
 
         byteArr = formNewMessageInfo(paramList.at(0).toInt() , paramList.at(1) , paramList.at(2) , paramList.at(3));
         _list.sendMessageToUsers(clientIdsForRoom(paramList.at(0).toInt()) , byteArr );
+        qDebug() << "~~Sending message...";
         break;
     case RequestFromClient::SearchForUsers:
         paramList = extractParameters(message);
@@ -298,16 +291,27 @@ void Server::onReadyRead()
         paramList.pop_back();
         addPeopleToGroup(aux, paramList);
         break;
-    case RequestFromClient::AddMedia:
+    case RequestFromClient::MediaUploadId:
+        paramList = extractParameters(message);
+        sendUploadIdToUser(*client, paramList.at(0).toInt());
+        break;
+    case RequestFromClient::MediaChunk:
+        paramList = extractMediaChunkParameters(message);
+        mediaHandler.addChunk(*client , paramList[0].toULongLong(), paramList[1]);
         break;
     default:
         break;
     }
 }
 
-std::vector<QByteArray> Server::extractMediaParameters(const QByteArray& arr)
+void Server::sendUploadIdToUser(QTcpSocket& socket , int extension)
 {
-    return { "caca" };
+    qsizetype id = mediaHandler.makeNewSlot(extension);
+    QByteArray message = chunk_idSep + Aux::quoteIt(QByteArray::number(id));
+    Aux::createCmd(message, InfoToClient::UploadId);
+
+    socket.write(message);
+    socket.flush();
 }
 
 void Server::addPeopleToGroup(QByteArray chatId, std::vector<QByteArray> idList)
@@ -417,9 +421,7 @@ QByteArray Server::getContactInfoOfUsers(const QByteArray& id , std::vector<QByt
         "(requests @> ARRAY[" + id + "]) as hasSentRequest  FROM appusers WHERE id IN " + Auxiliary::makeList(idList) + ';';
 
     QSqlQuery query(*_database);
-    if (query.exec(cmd) == false)
-        qDebug() << "Nigga";
-
+    query.exec(cmd);
     //"SELECT id , name , friends , isonline , lastseen , (blocked @> ARRAY[%1]) as isblocked , "
     //"(requests @> ARRAY[%2]) as hasSentRequest FROM appusers WHERE name ILIKE '%" + str + "%';";
     QByteArray result = "{";
@@ -646,7 +648,6 @@ QByteArray Server::getContactsAndTheirInfoForUser( int id)
             result += contact_friendListSep + '"' + userQuery.value(4).toByteArray() +'"';
         }
     }
-    qDebug() << result;
     return result;
 }
 std::vector<QByteArray> Server::extractParameters(const QByteArray& str)
@@ -655,7 +656,7 @@ std::vector<QByteArray> Server::extractParameters(const QByteArray& str)
     int paramEnd = str.indexOf(')');
 
     if(paramEnd == -1 || paramBeg == -1)
-        qDebug() << "Error: Did not provide parantheses for parameters";
+        qDebug() << " ! Error: Did not provide parantheses for parameters";
 
     std::vector<QByteArray> parameterList;
     QByteArray aux;
@@ -674,6 +675,17 @@ std::vector<QByteArray> Server::extractParameters(const QByteArray& str)
 
     return parameterList;
 }
+std::vector<QByteArray> Server::extractMediaChunkParameters(const QByteArray& arr)
+{
+    int paramBeg = arr.indexOf('(');
+    int sepPos = arr.indexOf(',');
+    std::vector<QByteArray> parameterList;
+    QByteArray aux;
+    parameterList.emplace_back(arr.sliced(paramBeg + 1, sepPos - paramBeg - 1));
+    parameterList.emplace_back(arr.sliced(sepPos + 1 , (arr.size() - 1) - sepPos - 1));
+
+    return parameterList;
+}
 
 std::vector<QByteArray> Server::extractComplexParameters(const QByteArray& str, RequestFromClient type)
 {
@@ -684,7 +696,7 @@ std::vector<QByteArray> Server::extractComplexParameters(const QByteArray& str, 
     int paramEnd = str.indexOf(paramMessageEndStr);
 
     if (paramEnd == -1 || paramBeg == -1)
-        qDebug() << "Error: Did not provide parantheses for parameters";
+        qDebug() << " ! Error: Did not provide parantheses for parameters";
 
     std::vector<QByteArray> parameterList;
     //for (int i = paramBeg + 1; i < paramEnd; i++)
@@ -728,7 +740,7 @@ RequestFromClient Server::extractRequestType(const QByteArray& str)
     for(int i = 0 ; i < paramBeg ; i++)
         cmdStr.append(str.at(i));
 
-    qDebug() << "Extracted command: " + cmdStr;
+    qDebug() << "~~Extracted command: " + cmdStr;
 
     return RequestFromClient(cmdStr.toInt());
 }

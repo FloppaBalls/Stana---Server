@@ -42,6 +42,9 @@ static const QByteArray chat_adminIdSep = "\"" + chatPrefix + "Admin\":";
 static const QByteArray chat_readOnlyListSep = "\"" + chatPrefix + "ReadOnlyList\":";
 static const QByteArray chat_removedSep = "\"" + chatPrefix + "Removed\":";
 static const QByteArray chat_newMembersSep = "\"" + chatPrefix + "NewMembers\":";
+
+static const QByteArray chunk_idSep = "\"chunkId\":";
+static const QByteArray chunk_acceptedSep = "\"chunkAccepted\":";
 //for user info
 static const QByteArray userPrefix = "user";
 
@@ -63,7 +66,8 @@ enum RequestFromClient {
     UpdateChatName,
     RemoveFromGroup,
     AddPeopleToTheChat,
-    AddMedia
+    MediaUploadId,
+    MediaChunk
 };
 enum RequestFailure {
     NameUsed,
@@ -91,8 +95,18 @@ enum InfoToClient {
     GroupMembersAdded,
     NecessaryContacts,
     NewAdmin,
-    FriendStatus
+    FriendStatus,
+    UploadId,
+    ChunkAccepted
 };
+
+enum class FileExtension {
+    INVALID, PNG, JPG, COUNT
+};
+
+namespace Converters {
+    int suffixType(const QString& suf);
+}
 
 class Auxiliary {
 public:
@@ -106,5 +120,6 @@ public:
     static void createCmd(QByteArray& info, InfoToClient type);
     static std::vector<int> extractIntArray(const QByteArray& str);
     static QDateTime stringToDateTime(const QByteArray& str);
+    static int suffixType(const QString& suf);
 };
 #endif // AUXILIARY_H

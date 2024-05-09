@@ -8,6 +8,9 @@
 #include "ClientList.h"
 #include "Auxiliary.h"
 #include <QDateTime>
+#include "MediaHandler.h"
+
+
 /*Problems that I want to solve: 08/02/2024
     The fact that , when I send a message it is a problem that everytime one is sent in ANY chat , I have to always search for the participants in the database and
     search them in the connection list , if they are there. It is inneficient , especially if there are a lot of people using the app.
@@ -60,6 +63,8 @@ extern const QByteArray chat_readOnlyListSep;
 extern const QByteArray chat_removedSep;
 extern const QByteArray chat_newMembersSep;
 //for user info
+extern const QByteArray chunk_idSep;
+
 extern const QByteArray userPrefix;
 
 extern const QByteArray user_idSep;
@@ -84,7 +89,7 @@ private slots:
 private:
     static std::vector<QByteArray> extractParameters(const QByteArray& arr);
     static std::vector<QByteArray> extractComplexParameters(const QByteArray& arr, RequestFromClient type);
-    static std::vector<QByteArray> extractMediaParameters(const QByteArray& arr);
+    static std::vector<QByteArray> extractMediaChunkParameters(const QByteArray& arr);
     static RequestFromClient extractRequestType(const QByteArray& str);
     static std::vector<int> extractIntsFromArr(const QByteArray& str);
 
@@ -133,14 +138,15 @@ private:
     void sendServerAnnouncementToChat(QByteArray chatId , const QByteArray& text);
     void sendMessageToChatMembers(QByteArray chatId, const QByteArray& text);
     void sendMessageToFriendsOfUser(int userId , const QByteArray& text);
-
+    void sendUploadIdToUser(QTcpSocket& socket , int extension);
     void setStatusForUser(int id, bool online);
 signals:
     void newMessage(const QByteArray& byteArr);
 private:
     QTcpServer* pServer = nullptr;
-
+    MediaHandler mediaHandler;
     ClientList _list;
+
     std::unique_ptr<QSqlDatabase> _database;
 
     static constexpr qint16 searchReturnLimit = 30;
