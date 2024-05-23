@@ -3,12 +3,6 @@
 
 extern const QByteArray chunk_acceptedSep;
 
-
-MediaData::MediaData(QByteArray blob0, qsizetype id0, int extension0) : blob(blob0) , id(id0) , extension(extension0)
-{}
-MediaData::MediaData(qsizetype id0, int extension0) : id(id0) , extension(extension0)
-{}
-
 MediaHandler::MediaHandler() : sequence(0) , _mediaReady(false)
 {}
 void MediaHandler::addChunk(QTcpSocket& socket , qsizetype id, QByteArray& chunk)
@@ -46,6 +40,7 @@ void MediaHandler::addChunk(QTcpSocket& socket , qsizetype id, QByteArray& chunk
 			_readyMedia = std::make_unique<MediaData>(std::move(mediaList[pos]));
 			qDebug() << "~~" << _readyMedia->blob.size() << " bytes of media uploaded";
 			mediaList.erase(mediaList.begin() + pos);
+			_mediaReady = true;
 		}
 		else
 			qDebug() << "~~Received chunk";
@@ -54,8 +49,6 @@ void MediaHandler::addChunk(QTcpSocket& socket , qsizetype id, QByteArray& chunk
 		Auxiliary::createCmd(message, InfoToClient::ChunkAccepted);
 		socket.write(std::move(message));
 		socket.flush();
-		_mediaReady = true;
-
 	}
 	else
 	{

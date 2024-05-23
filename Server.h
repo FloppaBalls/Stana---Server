@@ -9,7 +9,7 @@
 #include "Auxiliary.h"
 #include <QDateTime>
 #include "MediaHandler.h"
-
+#include "MediaUploader.h"
 
 /*Problems that I want to solve: 08/02/2024
     The fact that , when I send a message it is a problem that everytime one is sent in ANY chat , I have to always search for the participants in the database and
@@ -83,14 +83,17 @@ public:
     explicit Server(QObject* parent = nullptr , int port = 1112);
 private slots:
     void onNewConnection();
-    void onReadyRead();
+    void onReadyRead_Client();
+    void onReadyRead_MediaProvider();
+    void onConnectionToMediaProvider();
     void onNewMessage(const QByteArray& byteArr);
     void onDisconnected();
 private:
     static std::vector<QByteArray> extractParameters(const QByteArray& arr);
     static std::vector<QByteArray> extractComplexParameters(const QByteArray& arr, RequestFromClient type);
     static std::vector<QByteArray> extractMediaChunkParameters(const QByteArray& arr);
-    static RequestFromClient extractRequestType(const QByteArray& str);
+    static int extractRequestNumber(const QByteArray& str);
+
     static std::vector<int> extractIntsFromArr(const QByteArray& str);
 
     QByteArray getSignInInfoForUser(int id);
@@ -144,7 +147,9 @@ signals:
     void newMessage(const QByteArray& byteArr);
 private:
     QTcpServer* pServer = nullptr;
+    QTcpSocket* pMediaProviderSocket = nullptr;
     MediaHandler mediaHandler;
+    MediaUploader mediaUploader;
     ClientList _list;
 
     std::unique_ptr<QSqlDatabase> _database;

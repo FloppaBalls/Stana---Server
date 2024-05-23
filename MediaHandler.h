@@ -1,14 +1,8 @@
 #include <QByteArray>
 #include <qDebug>
 #include <QTcpSocket>
+#include "MediaData.h"
 
-struct MediaData {
-	MediaData(QByteArray blob, qsizetype id, int extension);
-	MediaData(qsizetype id, int extension);
-	QByteArray blob;
-	qsizetype id;
-	int extension;
-};
 class MediaHandler {
 public:
 	MediaHandler();

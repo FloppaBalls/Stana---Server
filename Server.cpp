@@ -14,6 +14,13 @@ QByteArray& Message::operator[](int i) { return param[i];}
 Server::Server(QObject* obj , int port)
     :QObject(obj) , _list(this) 
 {
+    pMediaProviderSocket = new QTcpSocket(this);
+    connect(pMediaProviderSocket, &QTcpSocket::connected, this, &Server::onConnectionToMediaProvider);
+    pMediaProviderSocket->connectToHost(QHostAddress::LocalHost, 8500);
+
+    mediaUploader = MediaUploader(pMediaProviderSocket);
+
+
     pServer = new QTcpServer(this);
 
     if(!pServer->listen(QHostAddress::LocalHost , port))
@@ -96,6 +103,11 @@ std::pair<Message, int> Server::message(const QByteArray& str , int start) const
     return {std::move(m) , str.indexOf('(' , pos)};
 }
 
+void Server::onConnectionToMediaProvider()
+{
+    connect(pMediaProviderSocket, &QTcpSocket::readyRead, this, &Server::onReadyRead_MediaProvider);
+}
+
 void Server::onNewConnection()
 {
     QTcpSocket* pSocket = pServer->nextPendingConnection();
@@ -104,7 +116,7 @@ void Server::onNewConnection()
     qDebug() << "->New client connected";
     _list.addClient(Client(pSocket , -1 , Aux::getClientKey(pSocket)));
 
-    connect(pSocket , &QTcpSocket::readyRead , this , &Server::onReadyRead);
+    connect(pSocket , &QTcpSocket::readyRead , this , &Server::onReadyRead_Client);
     connect(pSocket , &QTcpSocket::disconnected , this , &Server::onDisconnected);
 }
 
@@ -121,14 +133,17 @@ void Server::onDisconnected()
     _list.removeClient(key);
 }
 
-void Server::onReadyRead()
+void Server::onReadyRead_Client()
 {
     const auto client = qobject_cast<QTcpSocket*>(sender());
     if(client == nullptr) return;
 
     const auto message = client->readAll();
 
-    RequestFromClient cmdType = extractRequestType(message);
+    int cmdNumber = extractRequestNumber(message);
+    RequestFromClient cmdType = RequestFromClient(cmdNumber);
+
+
     QSqlQuery query(*_database);
 
     if(cmdType != RequestFromClient::MediaChunk)
@@ -139,26 +154,27 @@ void Server::onReadyRead()
 
     QByteArray aux;
     QByteArray byteArr;
-    switch(cmdType)
+
+    switch (cmdType)
     {
     case RequestFromClient::Register:
         paramList = extractParameters(message);
         //verify if there is somebody already with this username or email
 
-        if(query.exec("SELECT * FROM appusers WHERE name = '" + paramList[0] + "';") == false)
+        if (query.exec("SELECT * FROM appusers WHERE name = '" + paramList[0] + "';") == false)
             qDebug() << " ! Find existing name query failed: " + query.lastError().text();
 
-        if(query.next())
+        if (query.next())
         {
             aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::NameUsed)) + ':' + commandEnd;
             client->write(aux);
             break;
         }
-        if(query.exec("SELECT * FROM appusers WHERE email = '" + paramList[1] + "';") == false)
+        if (query.exec("SELECT * FROM appusers WHERE email = '" + paramList[1] + "';") == false)
             qDebug() << " ! Find existing email query failed: " + query.lastError().text();
-        if(query.next())
+        if (query.next())
         {
-            aux = commandBegin +"F" +  QByteArray::number(int(RequestFailure::EmailUsed)) + ':' + commandEnd;
+            aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::EmailUsed)) + ':' + commandEnd;
             client->write(aux);
             break;
         }
@@ -180,26 +196,26 @@ void Server::onReadyRead()
         paramList = extractParameters(message);
         // check if it is a valid username
 
-        if(query.exec("SELECT * FROM appusers WHERE name = '" + paramList[0] + "';") == false)
+        if (query.exec("SELECT * FROM appusers WHERE name = '" + paramList[0] + "';") == false)
             qDebug() << " ! Find existing name query failed: " + query.lastError().text();
 
-        if(query.next())
+        if (query.next())
         {
             //password is the forth column in appusers table
 
             aux = query.value(3).toByteArray();
             //the third parameter should be the password
-            if(aux == paramList[1])
+            if (aux == paramList[1])
             {
                 aux = formAllDataOfUser(query.value(0).toInt());
                 setStatusForUser(query.value(0).toInt(), true);
-                _list.setIdForClient(Aux::getClientKey(client) , query.value(0).toInt());
+                _list.setIdForClient(Aux::getClientKey(client), query.value(0).toInt());
             }
             else
                 aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::IncorrectPassword)) + ':' + commandEnd;
         }
         else
-            aux =  commandBegin + "F" + QByteArray::number(int(RequestFailure::NameNotFound)) + ':' +  commandEnd;
+            aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::NameNotFound)) + ':' + commandEnd;
 
 
         client->write(aux);
@@ -209,20 +225,21 @@ void Server::onReadyRead()
         paramList = extractComplexParameters(message, cmdType);
 
         //ex UPDATE rooms SET history = array_append(history , ROW('Daquaivius' , 'nah like fr fr fr' , '2033-04-05 00:00:00')::message) WHERE id = 10;
-        aux = "UPDATE rooms SET history = array_append(history , ROW('" + paramList.at(1) + "' , '" + paramList.at(2) + "' , '" + paramList.at(3) + "')::message) WHERE id = " + paramList[0] + ';';
+        aux = "UPDATE rooms SET history = array_append(history , ROW('" + paramList.at(1) + "' , '" + paramList.at(2) + "' , '" +
+            paramList.at(3) + "')::message) WHERE id = " + paramList[0] + ';';
         query.prepare(aux);
 
 
-        if(query.exec() == false)
+        if (query.exec() == false)
             qDebug() << " ! " << query.lastError();
 
-        byteArr = formNewMessageInfo(paramList.at(0).toInt() , paramList.at(1) , paramList.at(2) , paramList.at(3));
-        _list.sendMessageToUsers(clientIdsForRoom(paramList.at(0).toInt()) , byteArr );
+        byteArr = formNewMessageInfo(paramList.at(0).toInt(), paramList.at(1), paramList.at(2), paramList.at(3));
+        _list.sendMessageToUsers(clientIdsForRoom(paramList.at(0).toInt()), byteArr);
         qDebug() << "~~Sending message...";
         break;
     case RequestFromClient::SearchForUsers:
         paramList = extractParameters(message);
-        aux = commandBegin + "I" + QByteArray::number(int(InfoToClient::SearchedUserList)) + ':' + searchForUsers(paramList[1] , paramList[0].toInt()) + commandEnd;
+        aux = commandBegin + "I" + QByteArray::number(int(InfoToClient::SearchedUserList)) + ':' + searchForUsers(paramList[1], paramList[0].toInt()) + commandEnd;
         client->write(aux);
         client->flush();
         break;
@@ -230,27 +247,27 @@ void Server::onReadyRead()
         paramList = extractParameters(message);
         // commandNumber(userId , friendRequestUserId  , accepted)
         query.exec("UPDATE appusers SET requests = ARRAY_REMOVE(requests , " + paramList[1] + ") WHERE id = " + paramList[0] + ';');
-        if(paramList[2].toInt())
+        if (paramList[2].toInt())
         {
-            makeFriends(paramList[0] , paramList[1]);
+            makeFriends(paramList[0], paramList[1]);
         }
         break;
     case RequestFromClient::SendFriendRequest:
         paramList = extractParameters(message);
         query.exec("UPDATE appusers SET requests = ARRAY_APPEND(requests , " + paramList[0] + ") WHERE id = " + paramList[1] + ';');
         aux = commandBegin + "I" + QByteArray::number(int(InfoToClient::NewFriendRequest)) + ':' + contactDataOfUser(paramList[0].toInt()) + commandEnd;
-        _list.sendMessageToUser(paramList[1].toInt() , aux);
+        _list.sendMessageToUser(paramList[1].toInt(), aux);
         break;
     case RequestFromClient::CreatePrivateChat:
         paramList = extractParameters(message);
         //example: 
         //INSERT INTO rooms (name , history , memberlist , private) VALUES ('Private' , ARRAY[('Server' , 'Come on , break the ice' , CURRENT_TIMESTAMP)]::message[] , 
         //ARRAY[4 , 5] , 'true') RETURNING id;
-        aux = "INSERT INTO rooms (name , history , memberlist , private) VALUES" 
+        aux = "INSERT INTO rooms (name , history , memberlist , private) VALUES"
             "('Private' , ARRAY[('Server' , 'Come on , break the ice' , CURRENT_TIMESTAMP)]::message[] , ARRAY[" + paramList.at(0) + " , " + paramList.at(1) + "] , 'true') RETURNING id;";
         query.exec(aux);
         query.next();
-        sendNewChatToUsers(paramList[0], paramList[1] , query.value(0).toByteArray());
+        sendNewChatToUsers(paramList[0], paramList[1], query.value(0).toByteArray());
         break;
     case RequestFromClient::RemoveFriend:
         paramList = extractParameters(message);
@@ -282,7 +299,7 @@ void Server::onReadyRead()
         break;
     case RequestFromClient::RemoveFromGroup:
         paramList = extractParameters(message);
-        removeFromGroup(paramList[0], paramList[1] , paramList[2].front() == 't');
+        removeFromGroup(paramList[0], paramList[1], paramList[2].front() == 't');
         break;
     case RequestFromClient::AddPeopleToTheChat:
         paramList = extractParameters(message);
@@ -297,7 +314,42 @@ void Server::onReadyRead()
         break;
     case RequestFromClient::MediaChunk:
         paramList = extractMediaChunkParameters(message);
-        mediaHandler.addChunk(*client , paramList[0].toULongLong(), paramList[1]);
+        mediaHandler.addChunk(*client, paramList[0].toULongLong(), paramList[1]);
+        if (mediaHandler.mediaReady())
+        {
+            mediaUploader.addMediaToQueue(mediaHandler.readyMedia());
+        }
+        break;
+    default:
+        break;
+    }
+  
+}
+
+void Server::onReadyRead_MediaProvider()
+{    
+    const auto client = qobject_cast<QTcpSocket*>(sender());
+    if (client == nullptr) return;
+
+    const auto message = client->readAll();
+
+    qDebug() << "~~Request from media provider" << message;
+    int cmdNumber = extractRequestNumber(message);
+
+    InfoFromMediaProvider cmdType = InfoFromMediaProvider(cmdNumber - 100);
+    std::vector<QByteArray> paramList;
+    switch (cmdType)
+    {
+    case InfoFromMediaProvider::MediaUploadId:
+        paramList = extractParameters(message);
+        mediaUploader.nextMedia(paramList[0]);
+        break;
+    case InfoFromMediaProvider::ChunkAccepted:
+        paramList = extractParameters(message);
+        if(paramList[0][0] == 't')
+            mediaUploader.nextChunk();
+        break;
+    case InfoFromMediaProvider::UploadedFileName:
         break;
     default:
         break;
@@ -731,7 +783,7 @@ std::vector<QByteArray> Server::extractComplexParameters(const QByteArray& str, 
 
     return parameterList;
 }
-RequestFromClient Server::extractRequestType(const QByteArray& str)
+int Server::extractRequestNumber(const QByteArray& str)
 {
     //begginging of paramaters
     int paramBeg = str.indexOf('(') ;
@@ -742,8 +794,10 @@ RequestFromClient Server::extractRequestType(const QByteArray& str)
 
     qDebug() << "~~Extracted command: " + cmdStr;
 
-    return RequestFromClient(cmdStr.toInt());
+    return cmdStr.toInt();
 }
+
+
 void Server::onNewMessage(const QByteArray& byteArr)
 {
     //for(const auto& client : std::as_const(_clients))

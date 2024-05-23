@@ -50,7 +50,7 @@ static const QByteArray userPrefix = "user";
 
 static const QByteArray user_idSep = "\"" + userPrefix + "Id\":";
 
-enum RequestFromClient {
+enum class RequestFromClient {
     Register,
     Login,
     AddMessage,
@@ -67,15 +67,17 @@ enum RequestFromClient {
     RemoveFromGroup,
     AddPeopleToTheChat,
     MediaUploadId,
-    MediaChunk
+    MediaChunk,
+
+    Invalid
 };
-enum RequestFailure {
+enum class RequestFailure {
     NameUsed,
     NameNotFound,
     IncorrectPassword,
     EmailUsed
 };
-enum InfoToClient {
+enum class InfoToClient {
     SignedIn,  // will inform the user that he has succesfully signed in
     ChatInfo, // will give the user the info of what chats he takes part in and it's messages
     Contacts, // will give the user his friend list , blocked people , people who are offline/online/last seen on yyyy-mm--dd
@@ -98,6 +100,18 @@ enum InfoToClient {
     FriendStatus,
     UploadId,
     ChunkAccepted
+};
+
+enum class RequestToMediaProvider {
+    MediaUploadId,
+    AddChunk,
+    Invalid
+};
+enum class InfoFromMediaProvider {
+    MediaUploadId,
+    ChunkAccepted,
+    UploadedFileName,
+    Invalid
 };
 
 enum class FileExtension {
