@@ -43,12 +43,20 @@ static const QByteArray chat_readOnlyListSep = "\"" + chatPrefix + "ReadOnlyList
 static const QByteArray chat_removedSep = "\"" + chatPrefix + "Removed\":";
 static const QByteArray chat_newMembersSep = "\"" + chatPrefix + "NewMembers\":";
 
-static const QByteArray chunk_idSep = "\"chunkId\":";
-static const QByteArray chunk_acceptedSep = "\"chunkAccepted\":";
+static const QByteArray upload_idSep = "\"uploadId\":";
+static const QByteArray upload_acceptedSep = "\"uploadAccepted\":";
+static const QByteArray upload_nameSep = "\"uploadName\":";
+static const QByteArray upload_senderIdSep = "\"uploadsenderId\":";
+static const QByteArray upload_receiverListSep = "\"uploadReceiverList\":";
+static const QByteArray upload_blobSep = "\"uploadBlob\":";
+static const QByteArray upload_extensionSep = "\"uploadExtension\":";
+static const QByteArray upload_fileSizeSep = "\"uploadSize\":";
 //for user info
 static const QByteArray userPrefix = "user";
 
 static const QByteArray user_idSep = "\"" + userPrefix + "Id\":";
+static const QByteArray ack = "ACK";
+static const QByteArray rej = "REJ";
 
 enum class RequestFromClient {
     Register,
@@ -66,9 +74,8 @@ enum class RequestFromClient {
     UpdateChatName,
     RemoveFromGroup,
     AddPeopleToTheChat,
-    MediaUploadId,
-    MediaChunk,
-
+    UploadId,
+    UploadFileChunk,
     Invalid
 };
 enum class RequestFailure {
@@ -98,8 +105,10 @@ enum class InfoToClient {
     NecessaryContacts,
     NewAdmin,
     FriendStatus,
-    UploadId,
-    ChunkAccepted
+    MediaUploadId,
+    FileName,
+    IncomingFile,
+    FileChunk
 };
 
 enum class RequestToMediaProvider {
@@ -130,8 +139,11 @@ public:
     static QByteArray safeQuoteIt(QByteArray str);
     //it should look something like this: (str1 , str2 , str3 , .... , strn)
     static QByteArray makeList(std::vector<QByteArray> str , char sepBegin = '(', char sepEnd = ')');
-    static void createCmd(QByteArray& info, RequestFailure type);
-    static void createCmd(QByteArray& info, InfoToClient type);
+    static void makeCmd(QByteArray& info, RequestFailure type);
+    static void makeCmd(QByteArray& info, InfoToClient type);
+    static QByteArray createCmd(const QByteArray& info, RequestFailure type);
+    static QByteArray createCmd(const QByteArray& info, InfoToClient type);
+    static std::vector<QByteArray> splitIntoChunks(const QByteArray& info, qsizetype chunkSize);
     static std::vector<int> extractIntArray(const QByteArray& str);
     static QDateTime stringToDateTime(const QByteArray& str);
     static int suffixType(const QString& suf);

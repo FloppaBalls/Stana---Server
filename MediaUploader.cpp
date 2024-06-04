@@ -5,14 +5,14 @@ MediaUploader::MediaUploader(QTcpSocket* socket0) :  socket(socket0)
 {
 	currentChunk = nChunks = 0;
 }
-void MediaUploader::addMediaToQueue(std::unique_ptr<MediaData> data)
+void MediaUploader::addMediaToQueue(std::unique_ptr<MediaHandlingData> data)
 {
 	bool wasEmpty = mediaQueue.size() == 0;
 
 	if (wasEmpty)
 		requestId(data->extension);
 
-	mediaQueue.emplace(std::move(data));
+	mediaQueue.emplace(std::make_unique<MediaUploadingData>(*std::move(data)));
 }
 void MediaUploader::nextMedia(QString id)
 {
@@ -45,8 +45,6 @@ void MediaUploader::nextChunk()
 		QByteArray message = QByteArray::number((int)RequestToMediaProvider::AddChunk) + '(' + currentId.toUtf8() + ',' + data + ')' + "\n";
 		socket->write(message);
 		socket->flush();
-
-		qDebug() << "~~Uploading chunk of size: " << data.length();
 	}
 	else if (currentChunk == nChunks - 1)
 	{
@@ -57,16 +55,35 @@ void MediaUploader::nextChunk()
 		QByteArray message = QByteArray::number((int)RequestToMediaProvider::AddChunk) + '(' + currentId.toUtf8() + ',' + data + ')' + "\n";
 		socket->write(message);
 		socket->flush();
-		qDebug() << "~~Uploading chunk of size: " << data.length(); 
-			qDebug() << data;
-		//qDebug() << "Uploaded " << currentData->blob.length() << " bytes";
+
+		qDebug() << "Uploaded " << currentData->blob.length() << " bytes";
+		infoList.emplace_back(std::move(currentData));
 
 		if (mediaQueue.size())
 		{
-			std::unique_ptr<MediaData>& data = mediaQueue.front();
+			std::unique_ptr<MediaUploadingData>& data = mediaQueue.front();
 			requestId(data->extension);
 		}
 	}
+
+}
+
+
+//returns it and deletes it from the info list
+std::unique_ptr<MediaUploadingData> MediaUploader::readyInfo(QByteArray idStr)
+{
+	qsizetype id = idStr.toULongLong();
+	for (int i = 0; i < infoList.size(); i++)
+	{
+		std::unique_ptr<MediaUploadingData> info = std::move(infoList[i]);
+		if (info->uploadId == id)
+		{
+			infoList.erase(infoList.begin() + i);
+			qDebug() << "ChatId: " << info->chatId << " SenderId: " << info->senderId << " HandlingId: " << info->handlingId;
+			return std::move(info);
+		}
+	}
+	qDebug() << "!!!HANDLING INFO NOT FOUND";
 
 }
 

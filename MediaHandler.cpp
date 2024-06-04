@@ -16,11 +16,11 @@ void MediaHandler::addChunk(QTcpSocket& socket , qsizetype id, QByteArray& chunk
 	while(left <= right)
 	{
 		mid = (left + right) / 2;
-		if (mediaList[mid].id < id)
+		if (mediaList[mid].handlingId < id)
 		{
 			left = mid + 1;
 		}
-		else if (id < mediaList[mid].id)
+		else if (id < mediaList[mid].handlingId)
 		{
 			right = mid - 1;
 		}
@@ -37,7 +37,7 @@ void MediaHandler::addChunk(QTcpSocket& socket , qsizetype id, QByteArray& chunk
 		if (fin)
 		{
 			qDebug() << "~~Received final chunk";
-			_readyMedia = std::make_unique<MediaData>(std::move(mediaList[pos]));
+			_readyMedia = std::make_unique<MediaHandlingData>(std::move(mediaList[pos]));
 			qDebug() << "~~" << _readyMedia->blob.size() << " bytes of media uploaded";
 			mediaList.erase(mediaList.begin() + pos);
 			_mediaReady = true;
@@ -45,28 +45,24 @@ void MediaHandler::addChunk(QTcpSocket& socket , qsizetype id, QByteArray& chunk
 		else
 			qDebug() << "~~Received chunk";
 
-		QByteArray message = chunk_idSep + Auxiliary::quoteIt("true");
-		Auxiliary::createCmd(message, InfoToClient::ChunkAccepted);
-		socket.write(std::move(message));
+		socket.write(ack);
 		socket.flush();
 	}
 	else
 	{
-		QByteArray message = chunk_idSep + Auxiliary::quoteIt("false");
-		Auxiliary::createCmd(message, InfoToClient::ChunkAccepted);
-		socket.write(std::move(message));
+		socket.write(rej);
 		socket.flush();
-
 	}
 }
-qsizetype MediaHandler::makeNewSlot(int extension)
+
+qsizetype MediaHandler::makeNewSlot(int extension ,int chatId, int senderId, std::vector<int> members)
 {
-	mediaList.emplace_back(MediaData(sequence, extension));
+	mediaList.emplace_back(MediaHandlingData(sequence, extension , chatId , senderId , members));
 	sequence++;
 	return sequence - 1;
 }
 
-std::unique_ptr<MediaData> MediaHandler::readyMedia()
+std::unique_ptr<MediaHandlingData> MediaHandler::readyMedia()
 {
 	if (_mediaReady)
 	{

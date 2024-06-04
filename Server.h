@@ -102,7 +102,7 @@ private:
     //this does NOT send the flags of a user
     QByteArray getContactsAndTheirInfoForUser(int id);
 
-    QByteArray formAllDataOfUser(int userId);
+    std::vector<QByteArray> formAllDataOfUser(int userId);
     QByteArray formNewMessageInfo(int chatId , QByteArray sender , QByteArray text , QByteArray timestamp);
     //returns a list of users that have similar characters to this string
     QByteArray searchForUsers( const QByteArray& str , int clientId);
@@ -117,8 +117,6 @@ private:
     //extracts the information of a message from 'start' and returns a vector of the paramaters of a message in QByteArray
     //also return the end of the message
     std::pair<Message, int> message(const QByteArray& str , int start) const;
-    Client& clientByKey(const QByteArray& key);
-    void removeByKey(const QByteArray& key);
 
     QByteArray formMessageHistory(int chatId);
     void makeFriends(int id1 , int id2);
@@ -141,8 +139,11 @@ private:
     void sendServerAnnouncementToChat(QByteArray chatId , const QByteArray& text);
     void sendMessageToChatMembers(QByteArray chatId, const QByteArray& text);
     void sendMessageToFriendsOfUser(int userId , const QByteArray& text);
-    void sendUploadIdToUser(QTcpSocket& socket , int extension);
+    void sendUploadIdToUser(QTcpSocket& socket , std::vector<QByteArray> args);
     void setStatusForUser(int id, bool online);
+
+    void sendMediaToUsers(std::unique_ptr<MediaUploadingData> data , QByteArray fileName);
+    void sendFileNameToSender(int userId , int handlingId, QByteArray name);
 signals:
     void newMessage(const QByteArray& byteArr);
 private:
@@ -155,6 +156,7 @@ private:
     std::unique_ptr<QSqlDatabase> _database;
 
     static constexpr qint16 searchReturnLimit = 30;
+    static constexpr qsizetype chunkSize = 4096;
 };
 
 #endif // SERVER_H

@@ -139,6 +139,11 @@ void Server::onReadyRead_Client()
     if(client == nullptr) return;
 
     const auto message = client->readAll();
+    if (message.startsWith(ack))
+    {
+        _list.next(client);
+        return;
+    }
 
     int cmdNumber = extractRequestNumber(message);
     RequestFromClient cmdType = RequestFromClient(cmdNumber);
@@ -146,8 +151,10 @@ void Server::onReadyRead_Client()
 
     QSqlQuery query(*_database);
 
-    if(cmdType != RequestFromClient::MediaChunk)
+    //if (cmdType != RequestFromClient::MediaChunk)
         qDebug() << "~~Request: " + message;
+    //else
+    //    qDebug() << "Media transfer";
 
     std::vector<QByteArray> paramList;
     std::vector<QByteArray> mediaParamList;
@@ -167,7 +174,7 @@ void Server::onReadyRead_Client()
         if (query.next())
         {
             aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::NameUsed)) + ':' + commandEnd;
-            client->write(aux);
+            _list.sendResponseToUser(client, aux);
             break;
         }
         if (query.exec("SELECT * FROM appusers WHERE email = '" + paramList[1] + "';") == false)
@@ -175,7 +182,7 @@ void Server::onReadyRead_Client()
         if (query.next())
         {
             aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::EmailUsed)) + ':' + commandEnd;
-            client->write(aux);
+            _list.sendResponseToUser(client, aux);
             break;
         }
 
@@ -185,12 +192,7 @@ void Server::onReadyRead_Client()
         query.next();
 
         _list.setIdForClient(Aux::getClientKey(client), query.value(0).toInt());
-
-        //aux = "I" + QByteArray::number(int(InfoToClient::SignedIn));
-        //client->write(aux);
-
-        client->write(formAllDataOfUser(query.value(0).toInt()));
-        client->flush();
+        _list.sendResponsesToUser(client, formAllDataOfUser(query.value(0).toInt()));
         break;
     case RequestFromClient::Login:
         paramList = extractParameters(message);
@@ -207,19 +209,19 @@ void Server::onReadyRead_Client()
             //the third parameter should be the password
             if (aux == paramList[1])
             {
-                aux = formAllDataOfUser(query.value(0).toInt());
                 setStatusForUser(query.value(0).toInt(), true);
                 _list.setIdForClient(Aux::getClientKey(client), query.value(0).toInt());
+                _list.sendResponsesToUser(client, formAllDataOfUser(query.value(0).toInt()));
+                break;
             }
             else
-                aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::IncorrectPassword)) + ':' + commandEnd;
+                aux = Aux::createCmd("", RequestFailure::IncorrectPassword);
         }
         else
-            aux = commandBegin + "F" + QByteArray::number(int(RequestFailure::NameNotFound)) + ':' + commandEnd;
+            aux = Aux::createCmd("", RequestFailure::NameNotFound);
 
 
-        client->write(aux);
-        client->flush();
+        _list.sendResponseToUser(client, aux);
         break;
     case RequestFromClient::AddMessage:
         paramList = extractComplexParameters(message, cmdType);
@@ -234,14 +236,13 @@ void Server::onReadyRead_Client()
             qDebug() << " ! " << query.lastError();
 
         byteArr = formNewMessageInfo(paramList.at(0).toInt(), paramList.at(1), paramList.at(2), paramList.at(3));
-        _list.sendMessageToUsers(clientIdsForRoom(paramList.at(0).toInt()), byteArr);
+        _list.sendResponseToUsers(clientIdsForRoom(paramList.at(0).toInt()), byteArr);
         qDebug() << "~~Sending message...";
         break;
     case RequestFromClient::SearchForUsers:
         paramList = extractParameters(message);
         aux = commandBegin + "I" + QByteArray::number(int(InfoToClient::SearchedUserList)) + ':' + searchForUsers(paramList[1], paramList[0].toInt()) + commandEnd;
-        client->write(aux);
-        client->flush();
+        _list.sendResponseToUser(client, aux);
         break;
     case RequestFromClient::ManageFriendRequest:
         paramList = extractParameters(message);
@@ -256,7 +257,7 @@ void Server::onReadyRead_Client()
         paramList = extractParameters(message);
         query.exec("UPDATE appusers SET requests = ARRAY_APPEND(requests , " + paramList[0] + ") WHERE id = " + paramList[1] + ';');
         aux = commandBegin + "I" + QByteArray::number(int(InfoToClient::NewFriendRequest)) + ':' + contactDataOfUser(paramList[0].toInt()) + commandEnd;
-        _list.sendMessageToUser(paramList[1].toInt(), aux);
+        _list.sendResponseToUser(paramList[1].toInt(), aux);
         break;
     case RequestFromClient::CreatePrivateChat:
         paramList = extractParameters(message);
@@ -281,8 +282,7 @@ void Server::onReadyRead_Client()
         paramList = extractParameters(message);
         aux = paramList.back();
         paramList.pop_back();
-        client->write(getContactInfoOfUsers(aux, paramList));
-        client->flush();
+        _list.sendResponseToUser(client, getContactInfoOfUsers(aux, paramList));
         break;
     case RequestFromClient::UnblockUser:
         paramList = extractParameters(message);
@@ -308,11 +308,11 @@ void Server::onReadyRead_Client()
         paramList.pop_back();
         addPeopleToGroup(aux, paramList);
         break;
-    case RequestFromClient::MediaUploadId:
+    case RequestFromClient::UploadId:
         paramList = extractParameters(message);
-        sendUploadIdToUser(*client, paramList.at(0).toInt());
+        sendUploadIdToUser(*client, paramList);
         break;
-    case RequestFromClient::MediaChunk:
+    case RequestFromClient::UploadFileChunk:
         paramList = extractMediaChunkParameters(message);
         mediaHandler.addChunk(*client, paramList[0].toULongLong(), paramList[1]);
         if (mediaHandler.mediaReady())
@@ -338,6 +338,7 @@ void Server::onReadyRead_MediaProvider()
 
     InfoFromMediaProvider cmdType = InfoFromMediaProvider(cmdNumber - 100);
     std::vector<QByteArray> paramList;
+    QByteArray aux;
     switch (cmdType)
     {
     case InfoFromMediaProvider::MediaUploadId:
@@ -350,20 +351,79 @@ void Server::onReadyRead_MediaProvider()
             mediaUploader.nextChunk();
         break;
     case InfoFromMediaProvider::UploadedFileName:
+        paramList = extractParameters(message);
+        sendMediaToUsers(mediaUploader.readyInfo(paramList[0]), paramList[1]);
         break;
     default:
         break;
     }
 }
 
-void Server::sendUploadIdToUser(QTcpSocket& socket , int extension)
+void Server::sendMediaToUsers(std::unique_ptr<MediaUploadingData> data , QByteArray fileName )
 {
-    qsizetype id = mediaHandler.makeNewSlot(extension);
-    QByteArray message = chunk_idSep + Aux::quoteIt(QByteArray::number(id));
-    Aux::createCmd(message, InfoToClient::UploadId);
+    std::vector<std::shared_ptr<Client>> activeClients;
+    for (int id : data->members)
+    {
+        std::shared_ptr<Client> client = _list.clientById(id);
+        if (client.get() != nullptr)
+            activeClients.emplace_back(client);
+    }
+    
+    if (activeClients.size())
+    {
+        std::vector<QByteArray> chunkList = Aux::splitIntoChunks(data->blob, chunkSize);
 
-    socket.write(message);
-    socket.flush();
+        for (QByteArray& chunk : chunkList)
+        {
+            chunk = upload_blobSep + Aux::quoteIt(chunk);
+            Aux::makeCmd(chunk, InfoToClient::FileChunk);
+        }
+
+        QByteArray incomingFileResponse = upload_nameSep + Aux::quoteIt(fileName) +
+            upload_extensionSep + Aux::quoteIt(QByteArray::number(data->extension)) +
+            upload_fileSizeSep + Aux::quoteIt(QByteArray::number(data->blob.size()));
+
+        Aux::makeCmd(incomingFileResponse, InfoToClient::IncomingFile);
+        for (auto client : activeClients)
+        {
+            client->addResponse(incomingFileResponse);
+            client->addResponses(std::move(chunkList));
+        }
+    }
+
+    sendFileNameToSender(data->senderId, data->handlingId , fileName);
+}
+void Server::sendFileNameToSender(int userId, int handlingId , QByteArray name)
+{
+    std::shared_ptr<Client> client = _list.clientById(userId);
+    if (client.get() != nullptr)
+    {
+        QByteArray str = upload_idSep + Auxiliary::quoteIt(QByteArray::number(handlingId)) + upload_nameSep + Auxiliary::quoteIt(name);
+        Auxiliary::createCmd(str, InfoToClient::FileName);
+        client->addResponse(str);
+        qDebug() << str;
+    }
+}
+
+
+
+void Server::sendUploadIdToUser(QTcpSocket& socket, std::vector<QByteArray> args)
+{
+    int extension = args.at(0).toInt();
+    int chatId = args.at(1).toInt();
+    int senderId = args.at(2).toInt();
+    std::vector<int> membersList(args.size() - 3);
+    
+    for (int i = 0; i < membersList.size(); i++)
+    {
+        membersList[i] = args.at(i + 3).toInt();
+    }
+
+    qsizetype id = mediaHandler.makeNewSlot(extension , chatId , senderId , membersList);
+    QByteArray message = upload_idSep + Aux::quoteIt(QByteArray::number(id));
+    Aux::createCmd(message, InfoToClient::MediaUploadId);
+
+    _list.sendResponseToUser(&socket, message);
 }
 
 void Server::addPeopleToGroup(QByteArray chatId, std::vector<QByteArray> idList)
@@ -396,7 +456,7 @@ void Server::sendMessageToChatMembers(QByteArray chatId, const QByteArray& text)
     query.next();
 
     std::vector<int> list = Aux::extractIntArray(query.value(0).toByteArray());
-    _list.sendMessageToUsers(list, text);
+    _list.sendResponseToUsers(list, text);
 }
 
 void Server::removeFromGroup(QByteArray chatId, QByteArray userId, bool removed)
@@ -421,7 +481,7 @@ void Server::removeFromGroup(QByteArray chatId, QByteArray userId, bool removed)
     sendServerAnnouncementToChat(chatId, query.value(0).toByteArray() +
         ((removed) ? " was removed from the group" : " left the group"));
 
-    _list.sendMessageToUsers(list, cmd);
+    _list.sendResponseToUsers(list, cmd);
 
     //checking if the admin is the one who was removed
     bool newAdmin = false;
@@ -437,7 +497,7 @@ void Server::removeFromGroup(QByteArray chatId, QByteArray userId, bool removed)
         cmd = chat_idSep + Aux::quoteIt(chatId) + contact_idSep + Aux::quoteIt(query.value(0).toByteArray());
         Aux::createCmd(cmd, InfoToClient::NewAdmin);
 
-        _list.sendMessageToUsers(list, cmd);
+        _list.sendResponseToUsers(list, cmd);
 
         sendServerAnnouncementToChat(chatId, query.value(1).toByteArray() + " is the new Admin");
     }
@@ -453,8 +513,7 @@ void Server::unblockUserForUser(QByteArray id1, QByteArray id2)
     {
         QByteArray str = contact_idSep + Aux::quoteIt(id2);
         Aux::createCmd(str, InfoToClient::UserUnblocked);
-        client1->socket->write(str);
-        client1->socket->flush();
+        client1->addResponse(str);
     }
 
     auto client2 = _list.clientById(id2.toInt());
@@ -462,8 +521,7 @@ void Server::unblockUserForUser(QByteArray id1, QByteArray id2)
     {
         QByteArray str = contact_idSep + Aux::quoteIt(id1);
         Aux::createCmd(str, InfoToClient::UserUnblockedYou);
-        client2->socket->write(str);
-        client2->socket->flush();
+        client2->addResponse(str);
     }
 }
 
@@ -505,8 +563,7 @@ void Server::blockUserForUser(QByteArray id1, QByteArray id2)
     {
         QByteArray str = contact_idSep + Aux::quoteIt(id2);
         Aux::createCmd(str, InfoToClient::PersonBlocked);
-        client1->socket->write(str);
-        client1->socket->flush();
+        client1->addResponse(str);
     }
 
     auto client2 = _list.clientById(id2.toInt());
@@ -514,8 +571,7 @@ void Server::blockUserForUser(QByteArray id1, QByteArray id2)
     {
         QByteArray str = contact_idSep + Aux::quoteIt(id1);
         Aux::createCmd(str, InfoToClient::YouGotBlocked);
-        client2->socket->write(str);
-        client2->socket->flush();
+        client2->addResponse(str);
     }
 }
 void Server::breakFriendship(QByteArray id1, QByteArray id2)
@@ -529,8 +585,7 @@ void Server::breakFriendship(QByteArray id1, QByteArray id2)
     {
         QByteArray str = contact_idSep + Aux::quoteIt(id2);
         Aux::createCmd(str, InfoToClient::FriendRemoved);
-        client1->socket->write(str);
-        client1->socket->flush();
+        client1->addResponse(str);
     }
 
     auto client2 = _list.clientById(id2.toInt());
@@ -538,8 +593,7 @@ void Server::breakFriendship(QByteArray id1, QByteArray id2)
     {
         QByteArray str = contact_idSep + Aux::quoteIt(id2);
         Aux::createCmd(str, InfoToClient::FriendRemoved);
-        client2->socket->write(str);
-        client2->socket->flush();
+        client2->addResponse(str);
     }
 }
 
@@ -571,8 +625,7 @@ void Server::makeFriends(QByteArray id1 , QByteArray id2)
                contact_lastSeenSep + '"' + query.value(2).toByteArray() +'"' +
                contact_friendListSep + '"' + query.value(3).toByteArray() +'"';
         text += commandEnd;
-        client1->socket->write(text);
-        client1->socket->flush();
+        client1->addResponse(text);
     }
 
     auto client2 = _list.clientById(id2.toInt());
@@ -588,13 +641,12 @@ void Server::makeFriends(QByteArray id1 , QByteArray id2)
                contact_lastSeenSep + '"' + query.value(2).toByteArray() +'"' +
                contact_friendListSep + '"' + query.value(3).toByteArray() +'"';
         text += commandEnd;
-        client2->socket->write(text);
-        client2->socket->flush();
+        client2->addResponse(text);
     }
 }
 
 /* Ma gandeam sa trimit data-ul la client in bucati dar aparent data ul acela poate sa se combine si asta ar afecta citirea lui de catre client */
-QByteArray Server::formAllDataOfUser( int userId)
+std::vector<QByteArray> Server::formAllDataOfUser( int userId)
 {
     /* data format:
      *  All comands/requests or whatever will start with the character '~' and end with '\~'
@@ -606,10 +658,10 @@ QByteArray Server::formAllDataOfUser( int userId)
      *      ~I1 CHAT{ name , { {senderName , text , yyyy-mm-dd hh:mm:ss} , {} , ....} , {memberId0 , memberId1 , ... , memberIdN} },CHAT{},....\~
      *      ~I2 FRIENDS{ {id0 , online(bool) , lastSeen(timestamp) , } , id1 , id2 ,..... ,idn), FRIEND-REQUESTS { id3 , id5 ....} , BLOCKED { id1 , id2 , id3 ,...}\~
      * */
-    QByteArray info = QByteArray( commandBegin + "I0:" + getSignInInfoForUser(userId) + commandEnd) +
-                   commandBegin + "I1:" + getChatsForUser(userId) + commandEnd +
-                   commandBegin + "I2:" + getContactsAndTheirInfoForUser(userId) + commandEnd;
-    return info;
+    std::vector<QByteArray> list = { Aux::createCmd(getSignInInfoForUser(userId) , InfoToClient::SignedIn) ,
+                                     Aux::createCmd(getChatsForUser(userId) , InfoToClient::ChatInfo) ,
+                                     Aux::createCmd(getContactsAndTheirInfoForUser(userId) , InfoToClient::Contacts) };
+    return list;
 }
 QByteArray Server::getSignInInfoForUser(int id)
 {
@@ -933,10 +985,8 @@ void Server::sendNewChatToUsers(const QByteArray& id1, const QByteArray& id2, co
         Aux::createCmd(cmd1, InfoToClient::NewChat);
         Aux::createCmd(cmd2, InfoToClient::NewChat);
 
-        client1->socket->write(cmd1);
-        client1->socket->flush();
-        client2->socket->write(cmd2);
-        client2->socket->flush();
+        client1->addResponse(cmd1);
+        client2->addResponse(cmd2);
     }
     //if the first fails , it means only the requester is online
     else
@@ -952,8 +1002,7 @@ void Server::sendNewChatToUsers(const QByteArray& id1, const QByteArray& id2, co
         //
         cmd1 += chat_isSenderSep + "\"true\"";
         Aux::createCmd(cmd1, InfoToClient::NewChat);
-        client1->socket->write(cmd1);
-        client1->socket->flush();
+        client1->addResponse(cmd1);
     }
 
 }
@@ -983,7 +1032,7 @@ void Server::sendNewChatToUsers(std::vector<QByteArray> list, const QByteArray& 
     std::vector<int> idList = Aux::extractIntArray(query.value(3).toByteArray());
     QByteArray necessaryContacts = contactDataOfUsers(idList);
     Aux::createCmd(necessaryContacts, InfoToClient::NecessaryContacts);
-    _list.sendMessageToUsers(list, necessaryContacts);
+    _list.sendResponseToUsers(list, necessaryContacts);
 
     //the info of the chat itself
     std::shared_ptr<Client> admin = _list.clientById(list[0].toInt());
@@ -1005,12 +1054,11 @@ void Server::sendNewChatToUsers(std::vector<QByteArray> list, const QByteArray& 
 
     if (admin.get())
     {
-        admin->socket->write(cmd1);
-        admin->socket->flush();
+        admin->addResponse(cmd1);
     }
     list.erase(list.begin());
 
-    _list.sendMessageToUsers(list, cmd2);
+    _list.sendResponseToUsers(list, cmd2);
 
 }
 
@@ -1030,7 +1078,7 @@ void Server::sendServerAnnouncementToChat(QByteArray chatId, const QByteArray& t
     query.exec(cmd);
     cmd = formNewMessageInfo(chatId.toInt(), name, text, timestampStr);
 
-    _list.sendMessageToUsers(list, cmd);
+    _list.sendResponseToUsers(list, cmd);
 }
 
 void Server::changeChatName(const QByteArray& chatId, const QByteArray& newName)
@@ -1044,7 +1092,7 @@ void Server::changeChatName(const QByteArray& chatId, const QByteArray& newName)
     cmd = chat_idSep + Aux::quoteIt(chatId) + chat_nameSep + Aux::quoteIt(newName);
     Aux::createCmd(cmd, InfoToClient::NewChatName);
     std::vector<int> list = Aux::extractIntArray(query.value(0).toByteArray());
-    _list.sendMessageToUsers(list, cmd);
+    _list.sendResponseToUsers(list, cmd);
 
     QDateTime timestamp = QDateTime::currentDateTime();
     QByteArray timestampStr = (timestamp.date().toString("yyyy-MM-dd") + ' ' + timestamp.time().toString()).toUtf8();
@@ -1055,7 +1103,7 @@ void Server::changeChatName(const QByteArray& chatId, const QByteArray& newName)
     query.exec(cmd);
     cmd = formNewMessageInfo(chatId.toInt(), name, message, timestampStr);
 
-    _list.sendMessageToUsers(list, cmd);
+    _list.sendResponseToUsers(list, cmd);
 }
 
 void Server::sendMessageToFriendsOfUser(int userId , const QByteArray& str)
@@ -1065,7 +1113,7 @@ void Server::sendMessageToFriendsOfUser(int userId , const QByteArray& str)
     query.next();
 
     std::vector<int> list = extractIntsFromArr(query.value(0).toByteArray());
-    _list.sendMessageToUsers(list, str);
+    _list.sendResponseToUsers(list, str);
 }
 
 void Server::setStatusForUser(int id, bool online)

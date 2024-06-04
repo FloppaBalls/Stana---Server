@@ -4,11 +4,19 @@
 #include <QTcpSocket>
 #include <QHash>
 #include "Auxiliary.h"
+#include <queue>
+
 struct Client{
     Client(QTcpSocket* socket0 , qint16 id , QString key);
+
+    void next();
+    void addResponse(QByteArray response);
+    void addResponses(std::vector<QByteArray> responses);
+
     QTcpSocket* socket;
     qint16 userId = -1;
     QString key;
+    std::queue<QByteArray> responseQueue;
 };
 
 class ClientList : public QObject{
@@ -21,11 +29,14 @@ public:
     Client& clientByKey(const QString& key);
     void setIdForClient(const QString& clientKey , qint16 id);
 
-    void sendMessageToUsers(std::vector<int> userIdList , const QString& message) noexcept;
-    void sendMessageToUsers(std::vector<int> userIdList , const QByteArray& message) noexcept;
-    void sendMessageToUsers(std::vector<QByteArray> userIdList, const QByteArray& message) noexcept;
-    void sendMessageToUser(int userId , const QString& message) noexcept;
-    void sendMessageToUser(int userId , const QByteArray& message) noexcept;
+    void sendResponseToUsers(std::vector<int> userIdList , const QString& message) noexcept;
+    void sendResponseToUsers(std::vector<int> userIdList , const QByteArray& message) noexcept;
+    void sendResponseToUsers(std::vector<QByteArray> userIdList, const QByteArray& message) noexcept;
+    void sendResponseToUser(const QTcpSocket* socket, const QByteArray& response) noexcept;
+    void sendResponsesToUser(const QTcpSocket* socket, std::vector<QByteArray> responseList) noexcept;
+    void sendResponseToUser(int userId , const QString& message) noexcept;
+    void sendResponseToUser(int userId , const QByteArray& message) noexcept;
+    void next(const QTcpSocket* socket) noexcept;
 
     bool clientActive(int userId) const noexcept;
     std::shared_ptr<Client> clientById(int id);

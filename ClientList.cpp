@@ -3,6 +3,41 @@
 
 Client::Client(QTcpSocket* socket0 , qint16 id , QString key0) : socket(socket0) , userId(std::move(id)) , key(std::move(key0))
 {}
+void Client::next()
+{
+    if (responseQueue.empty() == false)
+    {
+        socket->write(responseQueue.front());
+        socket->flush();
+        responseQueue.pop();
+    }
+}
+void Client::addResponse(QByteArray response)
+{
+    if (responseQueue.empty())
+    {
+        socket->write(std::move(response));
+        socket->flush();
+    }
+    else
+        responseQueue.emplace(std::move(response));
+}
+void Client::addResponses(std::vector<QByteArray> responses)
+{
+    if (responseQueue.empty())
+    {
+        for (auto b = responses.begin() + 1; b != responses.end(); b++)
+            responseQueue.emplace(std::move(*b));
+
+        socket->write(std::move(*responses.begin()));
+        socket->flush();
+    }
+    else
+    {
+        for(QByteArray& r : responses)
+            responseQueue.emplace(r);
+    }
+}
 
 
 ClientList::ClientList(QObject* parent) : QObject(parent)
@@ -78,6 +113,12 @@ void ClientList::setIdForClient(const QString& clientKey , qint16 id)
     }
 }
 
+
+void ClientList::next(const QTcpSocket* socket) noexcept
+{
+    Client& client = clientByKey(Auxiliary::getClientKey(socket));
+    client.next();
+}
 std::shared_ptr<Client> ClientList::insertClientInList(std::shared_ptr<Client> c)
 {
     int mid , left , lastLeft , right , lastRight;
@@ -116,29 +157,36 @@ std::shared_ptr<Client> ClientList::insertClientInList(std::shared_ptr<Client> c
     return _loggedClients.emplace_back(c);
 }
 
-void ClientList::sendMessageToUsers(std::vector<int> userIdList , const QByteArray& message) noexcept
+void ClientList::sendResponseToUsers(std::vector<int> userIdList , const QByteArray& message) noexcept
 {
     for (const int& userId : userIdList)
-        sendMessageToUser(userId, message);
+        sendResponseToUser(userId, message);
 }
-void ClientList::sendMessageToUsers(std::vector<QByteArray> userIdList, const QByteArray& message) noexcept
+void ClientList::sendResponseToUsers(std::vector<QByteArray> userIdList, const QByteArray& message) noexcept
 {
     for (const QString& userId : userIdList)
-        sendMessageToUser(userId.toInt(), message);
+        sendResponseToUser(userId.toInt(), message);
 }
 
-void ClientList::sendMessageToUser(int userId , const QByteArray& message) noexcept
+void ClientList::sendResponseToUser(int userId , const QByteArray& message) noexcept
 {
     std::shared_ptr<Client> client = clientById(userId);
     if(client)
-    {
-        client->socket->write(message);
-        client->socket->flush();
-    }
+        client->addResponse(message);
 }
-
-void ClientList::sendMessageToUsers(std::vector<int> userIdList , const QString& message) noexcept{   sendMessageToUsers(std::move(userIdList), message.toUtf8());}
-void ClientList::sendMessageToUser(int userId , const QString& message) noexcept { sendMessageToUser(userId , message.toUtf8());}
+void ClientList::sendResponseToUser(const QTcpSocket* socket, const QByteArray& response) noexcept
+{
+    Client& client = clientByKey(Auxiliary::getClientKey(socket));
+    client.addResponse(response);
+}
+void ClientList::sendResponsesToUser(const QTcpSocket* socket, std::vector<QByteArray> responseList) noexcept
+{
+    Client& client = clientByKey(Auxiliary::getClientKey(socket));
+    for (QByteArray& arr : responseList)
+        client.addResponse(std::move(arr));
+}
+void ClientList::sendResponseToUsers(std::vector<int> userIdList , const QString& message) noexcept{   sendResponseToUsers(std::move(userIdList), message.toUtf8());}
+void ClientList::sendResponseToUser(int userId , const QString& message) noexcept { sendResponseToUser(userId , message.toUtf8());}
 
 
 std::shared_ptr<Client> ClientList::clientById(int id)

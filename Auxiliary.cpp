@@ -24,13 +24,21 @@ QByteArray Auxiliary::safeQuoteIt(QByteArray str)
     return " \"" + str.replace('"', "\"") + " \"";
 }
 
-void Auxiliary::createCmd(QByteArray& info , InfoToClient type)
+void Auxiliary::makeCmd(QByteArray& info , InfoToClient type)
 {
     info = commandBegin + "I" + QByteArray::number(int(type)) + ':' +  info + commandEnd;
 }
-void Auxiliary::createCmd(QByteArray& info, RequestFailure type)
+void Auxiliary::makeCmd(QByteArray& info, RequestFailure type)
 {
     info = commandBegin + "F" + QByteArray::number(int(type)) + ':' + info + commandEnd;
+}
+QByteArray Auxiliary::createCmd(const QByteArray& info, RequestFailure type)
+{
+    return commandBegin + "F" + QByteArray::number(int(type)) + ':' + info + commandEnd;;
+}
+QByteArray Auxiliary::createCmd(const QByteArray& info, InfoToClient type)
+{
+    return commandBegin + "I" + QByteArray::number(int(type)) + ':' + info + commandEnd;
 }
 
 QByteArray Auxiliary::makeList(std::vector<QByteArray> list, char sepBegin , char sepEnd)
@@ -111,4 +119,22 @@ int Auxiliary::suffixType(const QString& suf)
         return (int)FileExtension::PNG;
 
     return (int)FileExtension::INVALID;
+}
+
+std::vector<QByteArray> Auxiliary::splitIntoChunks(const QByteArray& info, qsizetype chunkSize)
+{
+    qsizetype index = 0;
+    qsizetype chunks = info.size() / chunkSize;
+    bool hasSmallerChunk = info.size() % chunkSize;
+
+    std::vector<QByteArray> list;
+    while (index < chunks)
+        list.emplace_back(info.sliced(index * chunkSize, chunkSize).append('0'));
+
+    if (hasSmallerChunk)
+        list.emplace_back(info.mid((index + 1) * chunkSize, chunkSize).append('1'));
+    else
+        list.back().back() = '1';
+
+    return list;
 }
